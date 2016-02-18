@@ -17,19 +17,24 @@ import (
 
 var debug bool
 var trace bool
+
+// SkipSSLValidation ...
 var SkipSSLValidation bool
 
+// Index ...
 type Index struct {
 	PrimaryShards []Shard
 	ReplicaShards []Shard
 	Name          string
 }
 
+// Node ...
 type Node struct {
 	Name string
-	Id   string
+	ID   string
 }
 
+// Shard ...
 type Shard struct {
 	Index      int
 	Node       string
@@ -37,6 +42,7 @@ type Shard struct {
 	Status     string
 }
 
+// DEBUG ...
 func DEBUG(format string, args ...interface{}) {
 	if debug {
 		content := fmt.Sprintf(format, args...)
@@ -49,16 +55,19 @@ func DEBUG(format string, args ...interface{}) {
 	}
 }
 
+// TRACE ...
 func TRACE(format string, args ...interface{}) {
 	if trace {
 		DEBUG(format, args...)
 	}
 }
 
+// ERROR ...
 func ERROR(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, "%s\n", fmt.Sprintf(format, args...))
 }
 
+// FATAL ...
 func FATAL(format string, args ...interface{}) {
 	ERROR(format, args...)
 	os.Exit(1)
@@ -128,10 +137,10 @@ func main() {
 	for _, index := range indices {
 		fmt.Printf("Checking index %s\n", index.Name)
 		availNodeMaps := make([]map[string]Node, len(index.PrimaryShards))
-		for i, _ := range availNodeMaps {
+		for i := range availNodeMaps {
 			availNodeMaps[i] = map[string]Node{}
 			for _, node := range nodes {
-				availNodeMaps[i][node.Id] = node
+				availNodeMaps[i][node.ID] = node
 			}
 		}
 
@@ -146,7 +155,7 @@ func main() {
 		}
 
 		availNodesList := make([][]Node, len(index.PrimaryShards))
-		for i, _ := range availNodesList {
+		for i := range availNodesList {
 			var availNodes []Node
 			for _, n := range availNodeMaps[i] {
 				availNodes = append(availNodes, n)
@@ -255,14 +264,14 @@ func getDataNodes(host string) ([]Node, error) {
 			for id, n := range nodes {
 				if node, ok := n.(map[string]interface{}); ok {
 					if settings, ok := node["settings"].(map[string]interface{}); ok {
-						if node_settings, ok := settings["node"].(map[string]interface{}); ok {
+						if nodeSettings, ok := settings["node"].(map[string]interface{}); ok {
 							var name string
-							if name, ok = node_settings["name"].(string); !ok {
+							if name, ok = nodeSettings["name"].(string); !ok {
 								return []Node{}, fmt.Errorf("Could not detect node name for node %s", id)
 							}
-							if data_node, ok := node_settings["data"].(string); ok {
-								if data_node == "true" {
-									nodelist = append(nodelist, Node{Name: name, Id: id})
+							if dataNode, ok := nodeSettings["data"].(string); ok {
+								if dataNode == "true" {
+									nodelist = append(nodelist, Node{Name: name, ID: id})
 								}
 							} else {
 								return []Node{}, fmt.Errorf("Unexpected data type for `nodes.%s.settings.node.data` key", id)
