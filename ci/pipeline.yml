@@ -1,0 +1,140 @@
+groups:
+- name: build
+  jobs:
+  - testflight
+  - rc
+  - shipit
+- name: version
+  jobs:
+  - patch
+  - minor
+  - major
+
+jobs:
+- name: testflight
+  public: true
+  serial: true
+  plan:
+  - do:
+    - aggregate:
+      - get: esuf
+        resource: git-esuf
+        trigger: true
+    - task: run_tests
+      config:
+        platform: linux
+        image: {{docker-hub-task-image}}
+        inputs:
+        - name: esuf
+          path: .
+        run:
+          path: ./ci/scripts/run_tests.sh
+          args: []
+
+- name: rc
+  public: true
+  plan:
+  - aggregate:
+    - get: esuf
+      resource: git-esuf
+      passed: [testflight]
+      trigger: true
+    - get: version
+      trigger: false
+      params: {pre: rc}
+  - put: version
+    params: {file: version/number}
+
+- name: patch
+  public: true
+  plan:
+  - aggregate:
+    - get: version
+      trigger: false
+      params: {bump: patch}
+  - put: version
+    params: {file: version/number}
+
+- name: minor
+  public: true
+  plan:
+  - aggregate:
+    - get: version
+      trigger: false
+      params: {bump: minor}
+  - put: version
+    params: {file: version/number}
+
+- name: major
+  public: true
+  plan:
+  - aggregate:
+    - get: version
+      trigger: false
+      params: {bump: major}
+  - put: version
+    params: {file: version/number}
+
+- name: shipit
+  public: true
+  serial: true
+  plan:
+  - aggregate:
+    - get: version
+      passed: [rc]
+      params: {bump: final}
+    - get: esuf
+      resource: git-esuf
+      passed: [rc]
+  - task: create-final-release
+    config:
+      platform: linux
+      image: {{docker-hub-task-image}}
+      inputs:
+      - name: esuf
+      - name: version
+      run:
+        path: ./esuf/ci/scripts/shipit.sh
+        args: []
+      params:
+        RELEASE:      esuf Release
+        VERSION_FROM: ../version/number
+  - put: git-esuf
+    params:
+      repository: create-final-release/esuf
+      rebase: true
+  - aggregate:
+    - put: version
+      params: {file: version/number}
+    - put: github-final-release
+      params:
+        name: create-final-release/esuf/releases/name
+        tag: create-final-release/esuf/releases/tag
+        body: create-final-release/esuf/releases/notes.md
+        globs:
+        - create-final-release/esuf/releases/esuf-*
+
+
+resources:
+- name: version
+  type: semver
+  source:
+    key: current-version
+    bucket: {{pipeline-aws-bucket}}
+    access_key_id: {{pipeline-aws-access-key-id}}
+    secret_access_key: {{pipeline-aws-secret-access-key}}
+    initial_version: 0.1.0
+
+- name: git-esuf
+  type: git
+  source:
+    uri: git@github.com:starkandwayne/esuf.git
+    branch: master
+    private_key: {{github-private-key}}
+
+- name: github-final-release
+  type: github-release
+  source:
+    user: starkandwayne
+    repository: esuf
+    access_token: {{github-access-token}}

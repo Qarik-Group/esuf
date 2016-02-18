@@ -24,3 +24,5 @@ _testmain.go
 *.prof
 
 esuf
+credentials.yml
+ci/credentials.yml
