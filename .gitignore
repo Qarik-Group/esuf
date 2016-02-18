@@ -24,5 +24,7 @@ _testmain.go
 *.prof
 
 esuf
+esuf-*
+releases
 credentials.yml
 ci/credentials.yml
