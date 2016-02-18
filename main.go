@@ -15,6 +15,13 @@ import (
 	"strings"
 )
 
+// VERSION holds the Current version of spruce
+var VERSION = "0.1.0" // SED MARKER FOR AUTO VERSION BUMPING
+// BUILD holds CURRENT BUILD OF SPRUCE
+var BUILD = "master" // updated by build.sh
+// DIRTY holds Whether any uncommitted changes were found in the working copy
+var DIRTY = "" // updated by build.sh
+
 var debug bool
 var trace bool
 
@@ -89,6 +96,7 @@ func main() {
 		Host          string `goptions:"-H, --elasticsearch_url, description='ElasticSearch URL. Defaults to http://localhost:9200'"`
 		SkipSSLVerify bool   `goptions:"-k, --skip-ssl-validation, description='Disable SSL certificate checking'"`
 		Help          bool   `goptions:"-h, --help"`
+		Version       bool   `goptions:"-v, --version"`
 	}
 
 	goptions.ParseAndFail(&options)
@@ -111,6 +119,15 @@ func main() {
 	if trueString(os.Getenv("TRACE")) {
 		trace = true
 		debug = true
+	}
+
+	if options.Version {
+		plus := ""
+		if BUILD != "release" {
+			plus = "+"
+		}
+		fmt.Fprintf(os.Stderr, "%s - Version %s%s (%s%s)\n", os.Args[0], VERSION, plus, BUILD, DIRTY)
+		os.Exit(0)
 	}
 
 	if options.SkipSSLVerify {
