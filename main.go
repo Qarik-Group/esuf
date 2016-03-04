@@ -3,11 +3,9 @@ package main
 import (
 	"bytes"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
+	"github.com/geofffranks/botta"
 	"github.com/voxelbrain/goptions"
-	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
 	"os"
@@ -131,7 +129,8 @@ func main() {
 	}
 
 	if options.SkipSSLVerify {
-		SkipSSLValidation = true
+		client := botta.Client()
+		client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: SkipSSLValidation}}
 	}
 
 	if options.Host == "" {
@@ -224,192 +223,149 @@ func main() {
 	}
 }
 
-func httpRequest(method string, url string, data io.Reader) ([]byte, error) {
-
-	req, err := http.NewRequest(method, url, data)
+func get(url string) (*botta.Response, error) {
+	req, err := botta.Get(url)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("Content-Type", "application/json")
 	dumpReq, err := httputil.DumpRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
 	TRACE("HTTP Request:\n%s", dumpReq)
-
-	client := &http.Client{}
-	client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: SkipSSLValidation}}
-
-	resp, err := client.Do(req)
+	data, err := botta.Issue(req)
 	if err != nil {
 		return nil, err
 	}
-	dumpResp, err := httputil.DumpResponse(resp, true)
+	dumpResp, err := httputil.DumpResponse(data.HTTPResponse, true)
 	if err != nil {
 		return nil, err
 	}
 	TRACE("HTTP Response:\n%s", dumpResp)
 
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("%s returned %d: %s", url, resp.StatusCode, body)
-	}
-
-	return body, nil
+	return data, nil
 }
 
 func getDataNodes(host string) ([]Node, error) {
-	data, err := httpRequest("GET", host+"/_nodes?pretty", nil)
-	if err != nil {
-		return []Node{}, err
-	}
-
-	var o interface{}
-	err = json.Unmarshal(data, &o)
+	data, err := get(host + "/_nodes?pretty")
 	if err != nil {
 		return []Node{}, err
 	}
 
 	var nodelist []Node
-	if obj, ok := o.(map[string]interface{}); ok {
-		if nodes, ok := obj["nodes"].(map[string]interface{}); ok {
-			for id, n := range nodes {
-				if node, ok := n.(map[string]interface{}); ok {
-					if settings, ok := node["settings"].(map[string]interface{}); ok {
-						if nodeSettings, ok := settings["node"].(map[string]interface{}); ok {
-							var name string
-							if name, ok = nodeSettings["name"].(string); !ok {
-								return []Node{}, fmt.Errorf("Could not detect node name for node %s", id)
-							}
-							if dataNode, ok := nodeSettings["data"].(string); ok {
-								if dataNode == "true" {
-									nodelist = append(nodelist, Node{Name: name, ID: id})
-								}
-							} else {
-								return []Node{}, fmt.Errorf("Unexpected data type for `nodes.%s.settings.node.data` key", id)
-							}
-						} else {
-							return []Node{}, fmt.Errorf("Unexpected data type for `nodes.%s.settings.node` key", id)
-						}
-					} else {
-						return []Node{}, fmt.Errorf("Unexpected data type for `nodes.%s.settings` key", id)
-					}
-				} else {
-					return []Node{}, fmt.Errorf("Unexpected data type for `nodes.%s` key", id)
-				}
-			}
-		} else {
-			return []Node{}, fmt.Errorf("Unexpected data type for `nodes` key")
+
+	nodes, err := data.ArrayVal("nodes")
+	if err != nil {
+		return []Node{}, fmt.Errorf("Unexpected data type for `nodes` key")
+	}
+	for id, _ := range nodes {
+		name, err := data.StringVal(fmt.Sprintf("nodes.[%d].settings.node.name", id))
+		if err != nil {
+			return []Node{}, fmt.Errorf("Could not detect node name for node %s", id)
 		}
-	} else {
-		return []Node{}, fmt.Errorf("Unexpected data type returned from `GET /_nodes`")
+		dataNode, err := data.StringVal(fmt.Sprintf("nodes.[%d].settings.node.data", id))
+		if err != nil {
+			return []Node{}, fmt.Errorf("Unexpected data type for `nodes.%s.settings.node.data` key", id)
+		}
+		if dataNode == "true" {
+			nodelist = append(nodelist, Node{Name: name, ID: fmt.Sprintf("%d", id)})
+		}
 	}
 
 	return nodelist, nil
 }
 
 func rerouteShard(host string, index string, shard int, node string, primary bool) error {
-	data := fmt.Sprintf(`{"commands":[{"allocate":{"index":"%s","shard":%d,"node":"%s","allow_primary":%t}}]}`, index, shard, node, primary)
+	data := fmt.Sprintf(
+		`{"commands":[{"allocate":{"index":"%s","shard":%d,"node":"%s","allow_primary":%t}}]}`,
+		index, shard, node, primary)
 
 	dataBuf := bytes.NewBuffer([]byte(data))
-	_, err := httpRequest("POST", host+"/_cluster/reroute", dataBuf)
+
+	req, err := http.NewRequest("POST", host+"/_cluster/reroute", dataBuf)
+	if err != nil {
+		return err
+	}
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("Content-Type", "application/json")
+
+	_, err = botta.Issue(req)
 	return err
 }
 
 func getIndices(host string) ([]Index, error) {
-	data, err := httpRequest("GET", host+"/_cluster/state?pretty", nil)
-	if err != nil {
-		return []Index{}, err
-	}
-
-	var o interface{}
-	err = json.Unmarshal(data, &o)
+	data, err := get(host + "/_cluster/state?pretty")
 	if err != nil {
 		return []Index{}, err
 	}
 
 	var indexlist []Index
-	if obj, ok := o.(map[string]interface{}); ok {
-		if rt, ok := obj["routing_table"].(map[string]interface{}); ok {
-			// indices
-			if indices, ok := rt["indices"].(map[string]interface{}); ok {
-				for indexName, i := range indices {
-					if indexData, ok := i.(map[string]interface{}); ok {
-						index := Index{Name: indexName}
-						if shards, ok := indexData["shards"].(map[string]interface{}); ok {
-							index.PrimaryShards = make([]Shard, len(shards))
-							index.ReplicaShards = make([]Shard, len(shards))
-							for shardKey, s := range shards {
-								if shardList, ok := s.([]interface{}); ok {
-									for i, s := range shardList {
-										if shard, ok := s.(map[string]interface{}); ok {
 
-											var primary bool
-											var state string
-											var node string
-											var relocating string
-											var shardFloat float64
-											shardFloat = -1.0
+	indices, err := data.MapVal("routing_table.indices")
+	if err != nil {
+		return []Index{}, fmt.Errorf("Unexpected data type for `routing_table.indices`")
+	}
+	for indexName, _ := range indices {
+		index := Index{Name: indexName}
+		shardStr := fmt.Sprintf("routing_table.indices.%s.shards", indexName)
 
-											if primary, ok = shard["primary"].(bool); !ok {
-												return []Index{}, fmt.Errorf("Could not parse `routing_table.indices.%s.shards.%s.[%d].primary", indexName, shardKey, i)
-											}
-
-											if state, ok = shard["state"].(string); !ok {
-												return []Index{}, fmt.Errorf("Could not parse `routing_table.indices.%s.shards.%s.[%d].state", indexName, shardKey, i)
-											}
-											if node, ok = shard["node"].(string); shard["node"] != nil && !ok {
-												return []Index{}, fmt.Errorf("Could not parse `routing_table.indices.%s.shards.%s.[%d].node", indexName, shardKey, i)
-											}
-											if relocating, ok = shard["relocating_node"].(string); shard["relocating"] != nil && !ok {
-												return []Index{}, fmt.Errorf("Could not parse `routing_table.indices.%s.shards.%s.[%d].relocating_node", indexName, shardKey, i)
-											}
-											if shardFloat, ok = shard["shard"].(float64); !ok {
-												return []Index{}, fmt.Errorf("Could not parse 'routing_table.indices.%s.shards.%s.[%d].shard", indexName, shardKey, i)
-											}
-											shardIndex := int(shardFloat)
-
-											parsedShard := Shard{
-												Index:      shardIndex,
-												Status:     state,
-												Node:       node,
-												Relocating: relocating,
-											}
-
-											if primary {
-												index.PrimaryShards[shardIndex] = parsedShard
-											} else {
-												index.ReplicaShards[shardIndex] = parsedShard
-											}
-										} else {
-											return []Index{}, fmt.Errorf("Unexpected data type for `routing_table.indices.%s.shards.%s.[%d]", indexName, shardKey, i)
-										}
-									}
-								} else {
-									return []Index{}, fmt.Errorf("Unexpected data type for `routing_table.indices.%s.shards.%s", indexName, shardKey)
-								}
-							}
-						} else {
-							return []Index{}, fmt.Errorf("Unexpected data type for `routing_table.indices.%s.shards", indexName)
-						}
-						indexlist = append(indexlist, index)
-					} else {
-						return []Index{}, fmt.Errorf("Unexpected data type for `routing_table.indices.%s`", indexName)
-					}
-				}
-			} else {
-				return []Index{}, fmt.Errorf("Unexpected data type for `routing_table.indices`")
-			}
-		} else {
-			return []Index{}, fmt.Errorf("Unexpected data type for `routing_table`")
+		shards, err := data.MapVal(shardStr)
+		if err != nil {
+			return []Index{}, fmt.Errorf("Unexpected data type for `%s`", shardStr)
 		}
-	} else {
-		return []Index{}, fmt.Errorf("Unexpected data type returned from `GET /_status`")
+		index.PrimaryShards = make([]Shard, len(shards))
+		index.ReplicaShards = make([]Shard, len(shards))
+
+		for shardKey, _ := range shards {
+			shardList, err := data.ArrayVal(fmt.Sprintf("%s.shards.%s", shardStr, shardKey))
+			if err != nil {
+				return []Index{}, fmt.Errorf("Unexpected data type for `%s.shards.%s`", shardStr, shardKey)
+			}
+			for i, _ := range shardList {
+				subShard := fmt.Sprintf("%s.shards.%s.[%d]", shardStr, shardKey, i)
+				primary, err := data.BoolVal(fmt.Sprintf("%s.primary", subShard))
+				if err != nil {
+					return []Index{}, fmt.Errorf("Could not parse `%s.primary`", subShard)
+				}
+
+				state, err := data.StringVal(fmt.Sprintf("%s.state", subShard))
+				if err != nil {
+					return []Index{}, fmt.Errorf("Could not parse `%s.state`", subShard)
+				}
+
+				node, err := data.StringVal(fmt.Sprintf("%s.node", subShard))
+				if err != nil {
+					return []Index{}, fmt.Errorf("Could not parse `%s.node`", subShard)
+				}
+
+				relocating, err := data.StringVal(fmt.Sprintf("%s.relocating", subShard))
+				if err != nil {
+					return []Index{}, fmt.Errorf("Could not parse `%s.relocating_node`", subShard)
+				}
+				shardNum, err := data.NumVal(fmt.Sprintf("%s.shard", subShard))
+				if err != nil {
+					return []Index{}, fmt.Errorf("Could not parse `%s.shard`", subShard)
+				}
+				shardIndex, err := shardNum.Int64()
+				if err != nil {
+					return []Index{}, fmt.Errorf("Could not convert `%s.shard` to int", subShard)
+				}
+
+				parsedShard := Shard{
+					Index:      int(shardIndex),
+					Status:     state,
+					Node:       node,
+					Relocating: relocating,
+				}
+
+				if primary {
+					index.PrimaryShards[shardIndex] = parsedShard
+				} else {
+					index.ReplicaShards[shardIndex] = parsedShard
+				}
+			}
+		}
+		indexlist = append(indexlist, index)
 	}
 
 	return indexlist, nil
