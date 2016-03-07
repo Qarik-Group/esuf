@@ -233,15 +233,22 @@ func get(url string) (*botta.Response, error) {
 		return nil, err
 	}
 	TRACE("HTTP Request:\n%s", dumpReq)
-	data, err := botta.Issue(req)
+
+	resp, err := botta.Client().Do(req)
 	if err != nil {
 		return nil, err
 	}
-	dumpResp, err := httputil.DumpResponse(data.HTTPResponse, true)
+
+	dumpResp, err := httputil.DumpResponse(resp, true)
 	if err != nil {
 		return nil, err
 	}
 	TRACE("HTTP Response:\n%s", dumpResp)
+
+	data, err := botta.ParseResponse(resp)
+	if err != nil {
+		return nil, err
+	}
 
 	return data, nil
 }
@@ -254,21 +261,21 @@ func getDataNodes(host string) ([]Node, error) {
 
 	var nodelist []Node
 
-	nodes, err := data.ArrayVal("nodes")
+	nodes, err := data.MapVal("$.nodes")
 	if err != nil {
 		return []Node{}, fmt.Errorf("Unexpected data type for `nodes` key")
 	}
 	for id, _ := range nodes {
-		name, err := data.StringVal(fmt.Sprintf("nodes.[%d].settings.node.name", id))
+		name, err := data.StringVal(fmt.Sprintf("nodes.[%s].settings.node.name", id))
 		if err != nil {
 			return []Node{}, fmt.Errorf("Could not detect node name for node %s", id)
 		}
-		dataNode, err := data.StringVal(fmt.Sprintf("nodes.[%d].settings.node.data", id))
+		dataNode, err := data.StringVal(fmt.Sprintf("nodes.[%s].settings.node.data", id))
 		if err != nil {
-			return []Node{}, fmt.Errorf("Unexpected data type for `nodes.%s.settings.node.data` key", id)
+			return []Node{}, fmt.Errorf("Unexpected data type for `nodes.[%s].settings.node.data` key", id)
 		}
 		if dataNode == "true" {
-			nodelist = append(nodelist, Node{Name: name, ID: fmt.Sprintf("%d", id)})
+			nodelist = append(nodelist, Node{Name: name, ID: fmt.Sprintf("%s", id)})
 		}
 	}
 
@@ -307,7 +314,7 @@ func getIndices(host string) ([]Index, error) {
 	}
 	for indexName, _ := range indices {
 		index := Index{Name: indexName}
-		shardStr := fmt.Sprintf("routing_table.indices.%s.shards", indexName)
+		shardStr := fmt.Sprintf("routing_table.indices.[%s].shards", indexName)
 
 		shards, err := data.MapVal(shardStr)
 		if err != nil {
@@ -317,12 +324,12 @@ func getIndices(host string) ([]Index, error) {
 		index.ReplicaShards = make([]Shard, len(shards))
 
 		for shardKey, _ := range shards {
-			shardList, err := data.ArrayVal(fmt.Sprintf("%s.shards.%s", shardStr, shardKey))
+			shardList, err := data.ArrayVal(fmt.Sprintf("%s.[%s]", shardStr, shardKey))
 			if err != nil {
-				return []Index{}, fmt.Errorf("Unexpected data type for `%s.shards.%s`", shardStr, shardKey)
+				return []Index{}, fmt.Errorf("Unexpected data type for `%s.[%s]`", shardStr, shardKey)
 			}
 			for i, _ := range shardList {
-				subShard := fmt.Sprintf("%s.shards.%s.[%d]", shardStr, shardKey, i)
+				subShard := fmt.Sprintf("%s.[%s].[%d]", shardStr, shardKey, i)
 				primary, err := data.BoolVal(fmt.Sprintf("%s.primary", subShard))
 				if err != nil {
 					return []Index{}, fmt.Errorf("Could not parse `%s.primary`", subShard)
