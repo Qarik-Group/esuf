@@ -1,7 +1,15 @@
 {
 	"ImportPath": "github.com/starkandwayne/esuf",
-	"GoVersion": "go1.5.3",
+	"GoVersion": "go1.5",
 	"Deps": [
+		{
+			"ImportPath": "github.com/geofffranks/botta",
+			"Rev": "d0606ccc38709a306ac10de54cc0b918fc857829"
+		},
+		{
+			"ImportPath": "github.com/jhunt/tree",
+			"Rev": "f10dfcdf6fac11b58ba78dfe103a29fdf532beb1"
+		},
 		{
 			"ImportPath": "github.com/voxelbrain/goptions",
 			"Comment": "2.5.10",
