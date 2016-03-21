@@ -324,9 +324,9 @@ func getIndices(host string) ([]Index, error) {
 		index.ReplicaShards = make([]Shard, len(shards))
 
 		for shardKey, _ := range shards {
-			shardList, err := data.ArrayVal(fmt.Sprintf("%s.[%s]", shardStr, shardKey))
+			shardList, err := data.ArrayVal(fmt.Sprintf("%s.%s", shardStr, shardKey))
 			if err != nil {
-				return []Index{}, fmt.Errorf("Unexpected data type for `%s.[%s]`", shardStr, shardKey)
+				return []Index{}, fmt.Errorf("Unexpected data type for `%s.%s`", shardStr, shardKey)
 			}
 			for i, _ := range shardList {
 				subShard := fmt.Sprintf("%s.[%s].[%d]", shardStr, shardKey, i)
@@ -345,9 +345,16 @@ func getIndices(host string) ([]Index, error) {
 					return []Index{}, fmt.Errorf("Could not parse `%s.node`", subShard)
 				}
 
-				relocating, err := data.StringVal(fmt.Sprintf("%s.relocating", subShard))
+				relocating, err := data.Val(fmt.Sprintf("%s.relocating_node", subShard))
 				if err != nil {
 					return []Index{}, fmt.Errorf("Could not parse `%s.relocating_node`", subShard)
+				}
+				var relocatingStr string
+				var ok bool
+				if relocating != nil {
+					if relocatingStr, ok = relocating.(string); !ok {
+						return []Index{}, fmt.Errorf("Got unexpected data type for `%s.relocating_node`")
+					}
 				}
 				shardNum, err := data.NumVal(fmt.Sprintf("%s.shard", subShard))
 				if err != nil {
@@ -362,7 +369,7 @@ func getIndices(host string) ([]Index, error) {
 					Index:      int(shardIndex),
 					Status:     state,
 					Node:       node,
-					Relocating: relocating,
+					Relocating: relocatingStr,
 				}
 
 				if primary {
