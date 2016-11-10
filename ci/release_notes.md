@@ -1,3 +1,4 @@
-Initial release of `esuf`
+# Improvements
 
-For fixing unassigned shards in elasticsearch clusters
+- Updated to go 1.7 (dependencies + using vendoring)
+- Updated CI to be based off of https://github.com/starkandwayne/pipeline-templates
