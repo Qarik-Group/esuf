@@ -1,0 +1,19 @@
+---
+meta:
+  name: esuf
+  target: sw
+  url: https://ci.vsphere.starkandwayne.com
+
+  aws:
+    access_key: (( vault "secret/aws/cfcommunity:access" ))
+    secret_key: (( vault "secret/aws/cfcommunity:secret" ))
+
+  github:
+    owner: starkandwayne
+    repo: esuf
+    private_key:  (( vault "secret/pipelines/esuf/github:private" ))
+    access_token: (( vault "secret/pipelines/esuf/github:token" ))
+
+  slack:
+    webhook: (( vault "secret/pipelines/esuf/slack:webhook" ))
+    channel: '#botspam'
