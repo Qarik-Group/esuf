@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/voxelbrain/goptions"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -13,14 +12,11 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/voxelbrain/goptions"
 )
 
-// VERSION holds the Current version of spruce
-var VERSION = "0.1.0" // SED MARKER FOR AUTO VERSION BUMPING
-// BUILD holds CURRENT BUILD OF SPRUCE
-var BUILD = "master" // updated by build.sh
-// DIRTY holds Whether any uncommitted changes were found in the working copy
-var DIRTY = "" // updated by build.sh
+var Version string
 
 var debug bool
 var trace bool
@@ -122,11 +118,11 @@ func main() {
 	}
 
 	if options.Version {
-		plus := ""
-		if BUILD != "release" {
-			plus = "+"
+		if Version != "" {
+			fmt.Fprintf(os.Stderr, "esuf v%s\n", Version)
+		} else {
+			fmt.Fprintf(os.Stderr, "esuf safe (development build)\n")
 		}
-		fmt.Fprintf(os.Stderr, "%s - Version %s%s (%s%s)\n", os.Args[0], VERSION, plus, BUILD, DIRTY)
 		os.Exit(0)
 	}
 
