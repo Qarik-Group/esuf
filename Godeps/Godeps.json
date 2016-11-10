@@ -1,6 +1,7 @@
 {
 	"ImportPath": "github.com/starkandwayne/esuf",
-	"GoVersion": "go1.5.3",
+	"GoVersion": "go1.7",
+	"GodepVersion": "v74",
 	"Deps": [
 		{
 			"ImportPath": "github.com/voxelbrain/goptions",
