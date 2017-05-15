@@ -6,7 +6,6 @@ export GOPATH=${PWD}/gopath
 export PATH=${PATH}:${GOPATH}/bin
 cd ${GOPATH}/src/${MODULE}
 
-godep restore
 
-go list ./... | grep -v vendor | xargs go vet
-go list ./... | grep -v vendor | xargs go test
+go vet $(go list ./... | grep -v vendor)
+go test -v ./...

@@ -48,7 +48,7 @@ meta:
     fail_moji:     ":airplane_arriving:"
     success_moji:  ":airplane_departure:"
     upset_moji:    ":sad_panda:"
-    fail_url: '(( concat "<" meta.url "/pipelines/$BUILD_PIPELINE_NAME/jobs/$BUILD_JOB_NAME/builds/$BUILD_NAME| Concourse Failure! " meta.slack.upset_moji ">" ))'
+    fail_url: '(( concat "<" meta.url "/teams/$BUILD_TEAM_NAME/pipelines/$BUILD_PIPELINE_NAME/jobs/$BUILD_JOB_NAME/builds/$BUILD_NAME| Concourse Failure! " meta.slack.upset_moji ">" ))'
 
   url: (( param "What is the URL for the Concourse instance this pipeline is located on?" ))
 
@@ -72,7 +72,7 @@ jobs:
         - task: test
           config:
             platform: linux
-            image: (( grab meta.image ))
+            rootfs_uri: (( grab meta.image ))
             inputs:
               - name: git
                 path: (( concat "gopath/src/" meta.go.module ))
@@ -96,6 +96,16 @@ jobs:
         - aggregate:
             - { get: git,     trigger: true,  passed: [test] }
             - { get: version, trigger: true, params: {pre: rc} }
+        - task: check-release-notes
+          config:
+            platform: linux
+            rootfs_uri: (( grab meta.image ))
+            inputs:
+              - name: git
+                path: git
+            run:
+              path: ./git/ci/scripts/rc
+              args: []
         - put: version
           params: {file: version/number}
         on_failure:
@@ -104,7 +114,7 @@ jobs:
             channel:  (( grab meta.slack.channel ))
             username: (( grab meta.slack.username ))
             icon_url: (( grab meta.slack.icon ))
-            text:    '(( concat meta.slack.fail_url " " meta.pipeline ": rc job failed" ))'
+            text:    '(( concat meta.slack.fail_url " " meta.pipeline ": rc job failed (did you write release notes?)" ))'
 
   - name: bump-patch
     public: true
@@ -160,7 +170,7 @@ jobs:
         - name: release
           task: release
           config:
-            image: (( grab meta.image ))
+            rootfs_uri: (( grab meta.image ))
             platform: linux
             inputs:
               - name: version
