@@ -89,6 +89,7 @@ func main() {
 		Debug         bool   `goptions:"-D, --debug, description='Enable debugging'"`
 		Trace         bool   `goptions:"--trace, description='Enable API call tracing'"`
 		Fix           bool   `goptions:"-f, --fix, description='Fix any issues detected'"`
+		ES5           bool   `goptions:"--elastic-search-5, description='Enable support for Elastic Search 5.x API'"`
 		Host          string `goptions:"-H, --elasticsearch_url, description='ElasticSearch URL. Defaults to http://localhost:9200'"`
 		SkipSSLVerify bool   `goptions:"-k, --skip-ssl-validation, description='Disable SSL certificate checking'"`
 		Help          bool   `goptions:"-h, --help"`
@@ -186,7 +187,7 @@ func main() {
 					DEBUG("Would assign %s as new node", node.Name)
 					if options.Fix {
 						fmt.Printf("    - bringing up %s shard %d primary on %s\n", index.Name, shard.Index, node.Name)
-						err := rerouteShard(options.Host, index.Name, shard.Index, node.Name, true)
+						err := rerouteShard(options.Host, index.Name, shard.Index, node.Name, true, options.ES5)
 						if err != nil {
 							ERROR(err.Error())
 						}
@@ -207,7 +208,7 @@ func main() {
 					DEBUG("Would assign %s as new node", node.Name)
 					if options.Fix {
 						fmt.Printf("    - bringing up %s shard %d replica on %s\n", index.Name, shard.Index, node.Name)
-						err := rerouteShard(options.Host, index.Name, shard.Index, node.Name, false)
+						err := rerouteShard(options.Host, index.Name, shard.Index, node.Name, false, options.ES5)
 						if err != nil {
 							ERROR(err.Error())
 						}
@@ -309,8 +310,15 @@ func getDataNodes(host string) ([]Node, error) {
 	return nodelist, nil
 }
 
-func rerouteShard(host string, index string, shard int, node string, primary bool) error {
+func rerouteShard(host string, index string, shard int, node string, primary bool, elasticSearch5 bool) error {
 	data := fmt.Sprintf(`{"commands":[{"allocate":{"index":"%s","shard":%d,"node":"%s","allow_primary":%t}}]}`, index, shard, node, primary)
+	if elasticSearch5 {
+		cmd := "allocate_replica"
+		if primary {
+			cmd = "allocate_primary"
+		}
+		data = fmt.Sprintf(`{"commands":[{"%s":{"index":"%s","shard":%d,"node":"%s"}}]}`, cmd, index, shard, node)
+	}
 
 	dataBuf := bytes.NewBuffer([]byte(data))
 	_, err := httpRequest("POST", host+"/_cluster/reroute", dataBuf)
